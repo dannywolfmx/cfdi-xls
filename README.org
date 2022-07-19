@@ -1,0 +1,5 @@
+* cfdi-xls
+Read a directory of cfdis and create a xls with information of this cfdis.
+
+** DONE función para detectar si existe directorio cfdis
+** TODO Creación automatica de columnas
