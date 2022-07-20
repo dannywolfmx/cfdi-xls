@@ -47,6 +47,10 @@ func main() {
 	// Create a new sheet.
 	f.SetCellRight("Fecha").SetCellRight("Nombre").SetCellRight("Total").SetCellRight("Folio").SetCellRight("Version")
 
+	if f.Err != nil {
+		log.Fatal(f.Err)
+	}
+
 	for _, file := range files {
 		//Read the file
 		fmt.Println(file.Name(), file.IsDir())
