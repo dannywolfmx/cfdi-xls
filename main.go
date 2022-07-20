@@ -45,7 +45,11 @@ func main() {
 
 	f := sheet.NewFile("Book1.xlsx")
 	// Create a new sheet.
-	f.SetCellRight("Fecha").SetCellRight("Nombre").SetCellRight("Total").SetCellRight("Folio").SetCellRight("Version")
+	f.SetCellRight("Fecha").
+		SetCellRight("Nombre").
+		SetCellRight("Total").
+		SetCellRight("Folio").
+		SetCellRight("Version")
 
 	if f.Err != nil {
 		log.Fatal(f.Err)
@@ -53,12 +57,15 @@ func main() {
 
 	for _, file := range files {
 		//Read the file
-		fmt.Println(file.Name(), file.IsDir())
 		if file.IsDir() {
-			return
+			continue
 		}
-
 		pathFile := path.Join(DIR_NAME, file.Name())
+
+		//check if the extension is a XML
+		if filepath.Ext(pathFile) != ".xml" {
+			continue
+		}
 
 		content, err := os.ReadFile(pathFile)
 
@@ -81,6 +88,7 @@ func main() {
 			SetCellRight(cfdi.Version)
 
 	}
+
 	// Save spreadsheet by the given path.
 	if err := f.Save(); err != nil {
 		fmt.Println(err)
