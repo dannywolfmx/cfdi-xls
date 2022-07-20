@@ -3,7 +3,7 @@ Extrae datos de uno o muchos cfdis a un archivo de excel (.xlsx)
 
 Crea una carpeta cfdis donde y coloca tus cfdis dentro de Establishment
 
-- |
-  | - main.go
-  | - cfdis
-    | - archivo.xml
+├── main.go
+├── cfdis 
+│   └── archivo.xml
+└── ...
