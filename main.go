@@ -8,7 +8,7 @@ import (
 	"path"
 	"path/filepath"
 
-	"github.com/xuri/excelize/v2"
+	"github.com/dannywolfmx/cfdi-xls/sheet"
 )
 
 const DIR_NAME = "./cfdis"
@@ -43,7 +43,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	f := NewFile("Book1.xlsx")
+	f := sheet.NewFile("Book1.xlsx")
 	// Create a new sheet.
 	f.SetCellRight("Fecha").SetCellRight("Nombre").SetCellRight("Total").SetCellRight("Folio").SetCellRight("Version")
 
@@ -88,70 +88,3 @@ func directoryExist(name string) bool {
 
 	return !os.IsNotExist(err)
 }
-
-type BookFile struct {
-	actualSheet  string
-	actualColumn byte
-	actualRow    uint
-	Err          error
-
-	*excelize.File
-}
-
-func NewFile(path string) *BookFile {
-	sheet := "Sheet1"
-	file := excelize.NewFile()
-	file.Path = path
-	index := file.NewSheet(sheet)
-	file.SetActiveSheet(index)
-
-	return &BookFile{
-		File:         file,
-		actualSheet:  sheet,
-		actualColumn: 'A',
-		actualRow:    1,
-	}
-}
-
-func (b *BookFile) SetCellRight(value string) *BookFile {
-	//Check if previes cells has an error
-	if b.Err != nil {
-		return b
-	}
-	axis := fmt.Sprintf("%c%d", b.actualColumn, b.actualRow)
-	b.Err = b.SetCellValue(b.actualSheet, axis, value)
-	b.NextColumn()
-
-	return b
-}
-
-func (b *BookFile) NextColumn() {
-	b.actualColumn++
-}
-
-func (b *BookFile) MoveRowDown() {
-	b.actualRow++
-}
-
-func (b *BookFile) MoveRowUpAndResetColumn() {
-	b.actualColumn = 'A'
-	b.MoveRowUp()
-}
-
-func (b *BookFile) MoveRowDownAndResetColumn() {
-	b.actualColumn = 'A'
-	b.MoveRowDown()
-}
-
-func (b *BookFile) MoveRowUp() {
-	if b.actualRow == 1 {
-		return
-	}
-	b.actualRow--
-}
-
-//ACell := fmt.Sprintf("A%d", index+2)
-//BCell := fmt.Sprintf("B%d", index+2)
-//CCell := fmt.Sprintf("C%d", index+2)
-//DCell := fmt.Sprintf("D%d", index+2)
-//ECell := fmt.Sprintf("E%d", index+2)
