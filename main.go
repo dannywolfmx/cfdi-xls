@@ -5,12 +5,13 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path"
 	"path/filepath"
 
 	"github.com/xuri/excelize/v2"
 )
 
-const DIR_NAME = "./cfdis2"
+const DIR_NAME = "./cfdis"
 
 type CFDI struct {
 	XMLName  xml.Name `xml:"Comprobante"`
@@ -44,16 +45,18 @@ func main() {
 
 	f := NewFile("Book1.xlsx")
 	// Create a new sheet.
-	f.SetCell("Fecha").SetCell("Nombre").SetCell("Total").SetCell("Folio").SetCell("Version")
+	f.SetCellRight("Fecha").SetCellRight("Nombre").SetCellRight("Total").SetCellRight("Folio").SetCellRight("Version")
 
 	for _, file := range files {
+		//Read the file
 		fmt.Println(file.Name(), file.IsDir())
 		if file.IsDir() {
 			return
 		}
 
-		path := fmt.Sprintf("%s/%s", DIR_NAME, file.Name())
-		content, err := os.ReadFile(path)
+		pathFile := path.Join(DIR_NAME, file.Name())
+
+		content, err := os.ReadFile(pathFile)
 
 		if err != nil {
 			log.Fatal(err)
@@ -63,11 +66,15 @@ func main() {
 
 		xml.Unmarshal(content, &cfdi)
 
-		f.SetCell(cfdi.Fecha).
-			SetCell(cfdi.Receptor.Nombre).
-			SetCell(cfdi.Total).
-			SetCell(cfdi.Folio).
-			SetCell(cfdi.Version)
+		//move to the next row down
+
+		f.MoveRowDownAndResetColumn()
+
+		f.SetCellRight(cfdi.Fecha).
+			SetCellRight(cfdi.Receptor.Nombre).
+			SetCellRight(cfdi.Total).
+			SetCellRight(cfdi.Folio).
+			SetCellRight(cfdi.Version)
 
 	}
 	// Save spreadsheet by the given path.
@@ -83,8 +90,10 @@ func directoryExist(name string) bool {
 }
 
 type BookFile struct {
-	actualSheet, actualAxis string
-	Err                     error
+	actualSheet  string
+	actualColumn byte
+	actualRow    uint
+	Err          error
 
 	*excelize.File
 }
@@ -97,21 +106,48 @@ func NewFile(path string) *BookFile {
 	file.SetActiveSheet(index)
 
 	return &BookFile{
-		File:        file,
-		actualSheet: sheet,
-		actualAxis:  "A",
+		File:         file,
+		actualSheet:  sheet,
+		actualColumn: 'A',
+		actualRow:    1,
 	}
 }
 
-func (b *BookFile) SetCell(value string) *BookFile {
-	b.Err = b.SetCellValue(b.actualSheet, b.actualAxis, value)
-	b.nextAxis()
+func (b *BookFile) SetCellRight(value string) *BookFile {
+	//Check if previes cells has an error
+	if b.Err != nil {
+		return b
+	}
+	axis := fmt.Sprintf("%c%d", b.actualColumn, b.actualRow)
+	b.Err = b.SetCellValue(b.actualSheet, axis, value)
+	b.NextColumn()
 
 	return b
 }
 
-func (b *BookFile) nextAxis() {
-	b.actualAxis = "B"
+func (b *BookFile) NextColumn() {
+	b.actualColumn++
+}
+
+func (b *BookFile) MoveRowDown() {
+	b.actualRow++
+}
+
+func (b *BookFile) MoveRowUpAndResetColumn() {
+	b.actualColumn = 'A'
+	b.MoveRowUp()
+}
+
+func (b *BookFile) MoveRowDownAndResetColumn() {
+	b.actualColumn = 'A'
+	b.MoveRowDown()
+}
+
+func (b *BookFile) MoveRowUp() {
+	if b.actualRow == 1 {
+		return
+	}
+	b.actualRow--
 }
 
 //ACell := fmt.Sprintf("A%d", index+2)
