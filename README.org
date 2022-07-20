@@ -1,5 +1,9 @@
 * cfdi-xls
-Read a directory of cfdis and create a xls with information of this cfdis.
+Extrae datos de uno o muchos cfdis a un archivo de excel (.xlsx)
 
-** DONE función para detectar si existe directorio cfdis
-** TODO Creación automatica de columnas
+Crea una carpeta cfdis donde y coloca tus cfdis dentro de Establishment
+
+- |
+  | - main.go
+  | - cfdis
+    | - archivo.xml
