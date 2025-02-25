@@ -7,6 +7,10 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"sort"
+	"time"
+
+	"github.com/leekchan/accounting"
 )
 
 const DIR_NAME = "./cfdis"
@@ -48,6 +52,8 @@ func main() {
 		log.Fatal(err)
 	}
 
+	pagos := make([]PrintablePagos, 0)
+
 	for _, file := range files {
 		//Read the file
 		if file.IsDir() {
@@ -78,22 +84,86 @@ func main() {
 		printablePagos := PrintablePagos{
 			Emisor:        complementoDePago.Emisor.Nombre,
 			Receptor:      complementoDePago.Receptor.Nombre,
-			FechaTimbrado: complementoDePago.Fecha,
+			FechaTimbrado: transformFecha(complementoDePago.Fecha),
 		}
 
 		pago20 := complementoDePago.Complemento.Pagos20
 
 		for _, documento := range pago20.Pago.DoctoRelacionado {
 			printablePago := PrintablePago{
-				FechaPago:     pago20.Pago.FechaPago,
+				FechaPago:     transformFecha(pago20.Pago.FechaPago),
 				ImportePagado: documento.ImpPagado,
+				Folio:         documento.Folio,
 			}
 			printablePagos.Pagos = append(printablePagos.Pagos, printablePago)
 		}
 
-		//Print the data
-		ImprimirPantallaPagos(printablePagos)
+		pagos = append(pagos, printablePagos)
 	}
+	if len(pagos) == 0 {
+		log.Fatal("No se encontraron pagos")
+	}
+
+	//Sort the pagos by date
+	sort.Slice(pagos, func(i, j int) bool {
+		return pagos[i].Pagos[0].FechaPago.Before(pagos[j].Pagos[0].FechaPago)
+	})
+
+	lastMonth := time.Month(0)
+	total := 0.0
+	contadorFacturas := 0
+
+	for _, pago := range pagos {
+		if len(pagos[0].Pagos) == 0 {
+			log.Fatal("No se encontraron pagos")
+		}
+
+		if lastMonth != pago.Pagos[0].FechaPago.Month() {
+			fmt.Println("Total pagos del mes: ", ac.FormatMoney(total))
+			fmt.Println("Total de facturas: ", contadorFacturas)
+			fmt.Println("-------------------------------------------------")
+			fmt.Println()
+			fmt.Println()
+
+			contadorFacturas = 0
+			total = 0.0
+
+			lastMonth = pago.Pagos[0].FechaPago.Month()
+			fmt.Println("-------------------------------------------------")
+			fmt.Println("-------------------------------------------------")
+			fmt.Println("Pagos del mes de ", pago.Pagos[0].FechaPago.Month())
+			fmt.Println("-------------------------------------------------")
+			fmt.Println("-------------------------------------------------")
+		}
+
+		ImprimirPantallaPagos(pago)
+
+		//Total pagos del mes
+		for _, p := range pago.Pagos {
+			total += p.ImportePagado
+			contadorFacturas++
+		}
+	}
+
+	fmt.Println("Total pagos del mes: ", ac.FormatMoney(total))
+	fmt.Println("Total de facturas: ", contadorFacturas)
+	fmt.Println("-------------------------------------------------")
+
+	//Prevent the console from closing
+	fmt.Scanln()
+}
+
+func printDate(date time.Time) {
+	fmt.Println(date.Format("2006-01-02"))
+}
+
+func transformFecha(fecha string) time.Time {
+	layout := "2006-01-02T15:04:05"
+	t, err := time.Parse(layout, fecha)
+	if err != nil {
+		log.Fatal(err)
+	}
+	return t
 }
 
 func directoryExist(name string) bool {
@@ -105,22 +175,28 @@ func directoryExist(name string) bool {
 type PrintablePagos struct {
 	Emisor        string
 	Receptor      string
-	FechaTimbrado string
+	FechaTimbrado time.Time
 	Pagos         []PrintablePago
 }
 
 type PrintablePago struct {
-	FechaPago     string
-	ImportePagado string
+	FechaPago     time.Time
+	ImportePagado float64
+	Folio         string
 }
+
+var ac = accounting.Accounting{Symbol: "$", Precision: 2}
 
 func ImprimirPantallaPagos(pago PrintablePagos) {
 	fmt.Println("Emisor: ", pago.Emisor)
 	fmt.Println("Receptor: ", pago.Receptor)
-	fmt.Println("Fecha de timbrado: ", pago.FechaTimbrado)
+	fmt.Println("Fecha de timbrado: ", pago.FechaTimbrado.Format("2006-01-02"))
 	for _, p := range pago.Pagos {
-		fmt.Println("	Fecha de pago: ", p.FechaPago)
-		fmt.Println("	Importe pagado: ", p.ImportePagado)
+		fmt.Println("	Folio: ", p.Folio)
+		fmt.Println("	Fecha de pago: ", p.FechaPago.Format("2006-01-02"))
+
+		fmt.Println("	Importe pagado: ", ac.FormatMoney(p.ImportePagado))
+		fmt.Println("")
 	}
 	fmt.Println("-------------------------------------------------")
 }
@@ -167,7 +243,7 @@ type DoctoRelacionado struct {
 	Serie            string      `xml:"Serie,attr"`
 	Folio            string      `xml:"Folio,attr"`
 	ImpSaldoAnt      string      `xml:"ImpSaldoAnt,attr"`
-	ImpPagado        string      `xml:"ImpPagado,attr"`
+	ImpPagado        float64     `xml:"ImpPagado,attr"`
 	ImpSaldoInsoluto string      `xml:"ImpSaldoInsoluto,attr"`
 	ImpuestosDR      ImpuestosDR `xml:"ImpuestosDR"`
 }
