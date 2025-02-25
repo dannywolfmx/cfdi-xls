@@ -7,8 +7,6 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-
-	"github.com/dannywolfmx/cfdi-xls/sheet"
 )
 
 const DIR_NAME = "./cfdis"
@@ -27,7 +25,13 @@ type Receptor struct {
 	Nombre string `xml:"Nombre,attr"`
 }
 
+type Emisor struct {
+	RFC    string `xml:"Rfc,attr"`
+	Nombre string `xml:"Nombre,attr"`
+}
+
 func main() {
+	//Check if the directory exists
 	if !directoryExist(DIR_NAME) {
 		ex, err := os.Executable()
 		if err != nil {
@@ -37,22 +41,11 @@ func main() {
 		log.Fatalf("No existe el directorio %s en la ruta actual %s", DIR_NAME, path)
 	}
 
+	//Get the files in the directory
 	files, err := os.ReadDir(DIR_NAME)
 
 	if err != nil {
 		log.Fatal(err)
-	}
-
-	f := sheet.NewFile("Book1.xlsx")
-	// Create a new sheet.
-	f.SetCellRight("Fecha").
-		SetCellRight("Nombre").
-		SetCellRight("Total").
-		SetCellRight("Folio").
-		SetCellRight("Version")
-
-	if f.Err != nil {
-		log.Fatal(f.Err)
 	}
 
 	for _, file := range files {
@@ -73,25 +66,33 @@ func main() {
 			log.Fatal(err)
 		}
 
-		var cfdi CFDI
+		var complementoDePago ComplementoDePago
 
-		xml.Unmarshal(content, &cfdi)
+		err = xml.Unmarshal(content, &complementoDePago)
 
-		//move to the next row down
+		if err != nil {
+			log.Fatal(err)
+		}
 
-		f.MoveRowDownAndResetColumn()
+		//Transform the data to the struct PrintablePagos
+		printablePagos := PrintablePagos{
+			Emisor:        complementoDePago.Emisor.Nombre,
+			Receptor:      complementoDePago.Receptor.Nombre,
+			FechaTimbrado: complementoDePago.Fecha,
+		}
 
-		f.SetCellRight(cfdi.Fecha).
-			SetCellRight(cfdi.Receptor.Nombre).
-			SetCellRight(cfdi.Total).
-			SetCellRight(cfdi.Folio).
-			SetCellRight(cfdi.Version)
+		pago20 := complementoDePago.Complemento.Pagos20
 
-	}
+		for _, documento := range pago20.Pago.DoctoRelacionado {
+			printablePago := PrintablePago{
+				FechaPago:     pago20.Pago.FechaPago,
+				ImportePagado: documento.ImpPagado,
+			}
+			printablePagos.Pagos = append(printablePagos.Pagos, printablePago)
+		}
 
-	// Save spreadsheet by the given path.
-	if err := f.Save(); err != nil {
-		fmt.Println(err)
+		//Print the data
+		ImprimirPantallaPagos(printablePagos)
 	}
 }
 
@@ -99,4 +100,90 @@ func directoryExist(name string) bool {
 	_, err := os.Stat(name)
 
 	return !os.IsNotExist(err)
+}
+
+type PrintablePagos struct {
+	Emisor        string
+	Receptor      string
+	FechaTimbrado string
+	Pagos         []PrintablePago
+}
+
+type PrintablePago struct {
+	FechaPago     string
+	ImportePagado string
+}
+
+func ImprimirPantallaPagos(pago PrintablePagos) {
+	fmt.Println("Emisor: ", pago.Emisor)
+	fmt.Println("Receptor: ", pago.Receptor)
+	fmt.Println("Fecha de timbrado: ", pago.FechaTimbrado)
+	for _, p := range pago.Pagos {
+		fmt.Println("	Fecha de pago: ", p.FechaPago)
+		fmt.Println("	Importe pagado: ", p.ImportePagado)
+	}
+	fmt.Println("-------------------------------------------------")
+}
+
+type ComplementoDePago struct {
+	XMLName     xml.Name    `xml:"Comprobante"`
+	Version     string      `xml:"Version,attr"`
+	Emisor      Emisor      `xml:"Emisor"`
+	Receptor    Receptor    `xml:"Receptor"`
+	Folio       string      `xml:"Folio,attr"`
+	Fecha       string      `xml:"Fecha,attr"`
+	Total       string      `xml:"Total,attr"`
+	Complemento Complemento `xml:"Complemento"`
+}
+
+type Complemento struct {
+	Pagos20 Pagos20 `xml:"Pagos"`
+}
+
+type Pagos20 struct {
+	Totales Totales `xml:"Totales"`
+	Pago    Pago    `xml:"Pago"`
+}
+
+type Totales struct {
+	TotalTrasladosBaseIVA16     string `xml:"TotalTrasladosBaseIVA16,attr"`
+	TotalTrasladosImpuestoIVA16 string `xml:"TotalTrasladosImpuestoIVA16,attr"`
+	MontoTotalPagos             string `xml:"MontoTotalPagos,attr"`
+}
+
+type Pago struct {
+	XMLName          xml.Name           `xml:"Pago"`
+	FechaPago        string             `xml:"FechaPago,attr"`
+	Monto            string             `xml:"Monto,attr"`
+	FormaDePagoP     string             `xml:"FormaDePagoP,attr"`
+	MonedaP          string             `xml:"MonedaP,attr"`
+	TipoCambioP      string             `xml:"TipoCambioP,attr"`
+	NumOperacion     string             `xml:"NumOperacion,attr"`
+	DoctoRelacionado []DoctoRelacionado `xml:"DoctoRelacionado"`
+}
+
+type DoctoRelacionado struct {
+	IDDocumento      string      `xml:"IdDocumento,attr"`
+	Serie            string      `xml:"Serie,attr"`
+	Folio            string      `xml:"Folio,attr"`
+	ImpSaldoAnt      string      `xml:"ImpSaldoAnt,attr"`
+	ImpPagado        string      `xml:"ImpPagado,attr"`
+	ImpSaldoInsoluto string      `xml:"ImpSaldoInsoluto,attr"`
+	ImpuestosDR      ImpuestosDR `xml:"ImpuestosDR"`
+}
+
+type ImpuestosDR struct {
+	TrasladosDR TrasladosDR `xml:"TrasladosDR"`
+}
+
+type TrasladosDR struct {
+	TrasladoDR TrasladoDR `xml:"TrasladoDR"`
+}
+
+type TrasladoDR struct {
+	BaseDR       string `xml:"BaseDR,attr"`
+	ImpuestoDR   string `xml:"ImpuestoDR,attr"`
+	TipoFactorDR string `xml:"TipoFactorDR,attr"`
+	TasaOCuotaDR string `xml:"TasaOCuotaDR,attr"`
+	ImporteDR    string `xml:"ImporteDR,attr"`
 }
