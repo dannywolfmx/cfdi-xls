@@ -8,31 +8,13 @@ import (
 	"path"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"time"
 
-	"github.com/leekchan/accounting"
+	"github.com/dannywolfmx/cfdi-xls/complemento"
 )
 
 const DIR_NAME = "./cfdis"
-
-type CFDI struct {
-	XMLName  xml.Name `xml:"Comprobante"`
-	Version  string   `xml:"Version,attr"`
-	Receptor Receptor `xml:"Emisor"`
-	Folio    string   `xml:"Folio,attr"`
-	Fecha    string   `xml:"Fecha,attr"`
-	Total    string   `xml:"Total,attr"`
-}
-
-type Receptor struct {
-	RFC    string `xml:"Rfc,attr"`
-	Nombre string `xml:"Nombre,attr"`
-}
-
-type Emisor struct {
-	RFC    string `xml:"Rfc,attr"`
-	Nombre string `xml:"Nombre,attr"`
-}
 
 func main() {
 	//Check if the directory exists
@@ -52,7 +34,15 @@ func main() {
 		log.Fatal(err)
 	}
 
-	pagos := make([]PrintablePagos, 0)
+	//ComplementoDePagoPrint(files)
+	CFDIPrint(files)
+
+	//Prevent the console from closing
+	fmt.Scanln()
+}
+
+func CFDIPrint(files []os.DirEntry) {
+	cfdis := make([]complemento.CFDI, 0)
 
 	for _, file := range files {
 		//Read the file
@@ -72,7 +62,127 @@ func main() {
 			log.Fatal(err)
 		}
 
-		var complementoDePago ComplementoDePago
+		var cfdi complemento.CFDI
+
+		err = xml.Unmarshal(content, &cfdi)
+
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		cfdis = append(cfdis, cfdi)
+	}
+
+	if len(cfdis) == 0 {
+		log.Fatal("No se encontraron facturas")
+	}
+
+	//Sort the cfdis by date
+	sort.Slice(cfdis, func(i, j int) bool {
+		fechaI, err := time.Parse("2006-01-02T15:04:05", cfdis[i].Fecha)
+		if err != nil {
+			log.Fatal(err)
+		}
+		fechaJ, err := time.Parse("2006-01-02T15:04:05", cfdis[j].Fecha)
+		if err != nil {
+			log.Fatal(err)
+		}
+		return fechaI.Before(fechaJ)
+	})
+
+	cfdisPUE := make([]complemento.CFDI, 0)
+	//cfdisPPD := make([]complemento.CFDI, 0)
+
+	for _, cfdi := range cfdis {
+		//		if cfdi.MetodoPago == "PUE" && cfdi.FormaPago != "01" && cfdi.FormaPago != "15" && cfdi.FormaPago != "30" && (cfdi.Receptor.UsoCFDI == "G01" || cfdi.Receptor.UsoCFDI == "G03") {
+		//			cfdisPUE = append(cfdisPUE, cfdi)
+		//		} else if cfdi.MetodoPago == "PPD" && (cfdi.Receptor.UsoCFDI == "G01" || cfdi.Receptor.UsoCFDI == "G03") {
+		//			cfdisPPD = append(cfdisPPD, cfdi)
+		//		}
+
+		//Solo forma de pago 01
+		if cfdi.FormaPago == "01" && (cfdi.Receptor.UsoCFDI == "G01" || cfdi.Receptor.UsoCFDI == "G03") {
+			cfdisPUE = append(cfdisPUE, cfdi)
+		}
+
+	}
+
+	total := 0.0
+	subTotal := 0.0
+	formasDePago := make(map[string]int)
+	for _, cfdi := range cfdisPUE {
+		cfdi.Print()
+		f, err := strconv.ParseFloat(cfdi.Total, 64)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		if f == 0 {
+			continue
+		}
+
+		s, err := strconv.ParseFloat(cfdi.SubTotal, 64)
+
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		formasDePago[cfdi.FormaPago]++
+
+		if cfdi.TipoCambio != "" {
+			tipoCambio, err := strconv.ParseFloat(cfdi.TipoCambio, 64)
+			if err != nil {
+				log.Fatal(err)
+			}
+
+			if tipoCambio != 1 {
+				f = f * tipoCambio
+				s = s * tipoCambio
+			}
+		}
+
+		total += f
+		subTotal += s
+	}
+
+	fmt.Println("Total Subtotal: ", subTotal)
+	fmt.Println("Total: ", total)
+	fmt.Println("Total de facturas PUE: ", len(cfdisPUE))
+
+	//FormasDePago
+	fmt.Println("Formas de pago")
+	for k, v := range formasDePago {
+		fmt.Println(k, ":", v)
+	}
+
+	//count
+	fmt.Println("-------------------------------------------------")
+	fmt.Println(len(cfdisPUE))
+
+}
+
+func ComplementoDePagoPrint(files []os.DirEntry) {
+	pagos := make([]complemento.PrintablePagos, 0)
+
+	for _, file := range files {
+		//Read the file
+		if file.IsDir() {
+			continue
+		}
+		pathFile := path.Join(DIR_NAME, file.Name())
+
+		//check if the extension is a XML
+		if filepath.Ext(pathFile) != ".xml" {
+			continue
+		}
+
+		content, err := os.ReadFile(pathFile)
+
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		var complementoDePago complemento.ComplementoDePago
 
 		err = xml.Unmarshal(content, &complementoDePago)
 
@@ -81,7 +191,7 @@ func main() {
 		}
 
 		//Transform the data to the struct PrintablePagos
-		printablePagos := PrintablePagos{
+		printablePagos := complemento.PrintablePagos{
 			Emisor:        complementoDePago.Emisor.Nombre,
 			Receptor:      complementoDePago.Receptor.Nombre,
 			FechaTimbrado: transformFecha(complementoDePago.Fecha),
@@ -90,7 +200,7 @@ func main() {
 		pago20 := complementoDePago.Complemento.Pagos20
 
 		for _, documento := range pago20.Pago.DoctoRelacionado {
-			printablePago := PrintablePago{
+			printablePago := complemento.PrintablePago{
 				FechaPago:     transformFecha(pago20.Pago.FechaPago),
 				ImportePagado: documento.ImpPagado,
 				Folio:         documento.Folio,
@@ -109,52 +219,8 @@ func main() {
 		return pagos[i].Pagos[0].FechaPago.Before(pagos[j].Pagos[0].FechaPago)
 	})
 
-	lastMonth := time.Month(0)
-	total := 0.0
-	contadorFacturas := 0
+	complemento.PrintPagos(pagos)
 
-	for _, pago := range pagos {
-		if len(pagos[0].Pagos) == 0 {
-			log.Fatal("No se encontraron pagos")
-		}
-
-		if lastMonth != pago.Pagos[0].FechaPago.Month() {
-			fmt.Println("Total pagos del mes: ", ac.FormatMoney(total))
-			fmt.Println("Total de facturas: ", contadorFacturas)
-			fmt.Println("-------------------------------------------------")
-			fmt.Println()
-			fmt.Println()
-
-			contadorFacturas = 0
-			total = 0.0
-
-			lastMonth = pago.Pagos[0].FechaPago.Month()
-			fmt.Println("-------------------------------------------------")
-			fmt.Println("-------------------------------------------------")
-			fmt.Println("Pagos del mes de ", pago.Pagos[0].FechaPago.Month())
-			fmt.Println("-------------------------------------------------")
-			fmt.Println("-------------------------------------------------")
-		}
-
-		ImprimirPantallaPagos(pago)
-
-		//Total pagos del mes
-		for _, p := range pago.Pagos {
-			total += p.ImportePagado
-			contadorFacturas++
-		}
-	}
-
-	fmt.Println("Total pagos del mes: ", ac.FormatMoney(total))
-	fmt.Println("Total de facturas: ", contadorFacturas)
-	fmt.Println("-------------------------------------------------")
-
-	//Prevent the console from closing
-	fmt.Scanln()
-}
-
-func printDate(date time.Time) {
-	fmt.Println(date.Format("2006-01-02"))
 }
 
 func transformFecha(fecha string) time.Time {
@@ -170,96 +236,4 @@ func directoryExist(name string) bool {
 	_, err := os.Stat(name)
 
 	return !os.IsNotExist(err)
-}
-
-type PrintablePagos struct {
-	Emisor        string
-	Receptor      string
-	FechaTimbrado time.Time
-	Pagos         []PrintablePago
-}
-
-type PrintablePago struct {
-	FechaPago     time.Time
-	ImportePagado float64
-	Folio         string
-}
-
-var ac = accounting.Accounting{Symbol: "$", Precision: 2}
-
-func ImprimirPantallaPagos(pago PrintablePagos) {
-	fmt.Println("Emisor: ", pago.Emisor)
-	fmt.Println("Receptor: ", pago.Receptor)
-	fmt.Println("Fecha de timbrado: ", pago.FechaTimbrado.Format("2006-01-02"))
-	for _, p := range pago.Pagos {
-		fmt.Println("	Folio: ", p.Folio)
-		fmt.Println("	Fecha de pago: ", p.FechaPago.Format("2006-01-02"))
-
-		fmt.Println("	Importe pagado: ", ac.FormatMoney(p.ImportePagado))
-		fmt.Println("")
-	}
-	fmt.Println("-------------------------------------------------")
-}
-
-type ComplementoDePago struct {
-	XMLName     xml.Name    `xml:"Comprobante"`
-	Version     string      `xml:"Version,attr"`
-	Emisor      Emisor      `xml:"Emisor"`
-	Receptor    Receptor    `xml:"Receptor"`
-	Folio       string      `xml:"Folio,attr"`
-	Fecha       string      `xml:"Fecha,attr"`
-	Total       string      `xml:"Total,attr"`
-	Complemento Complemento `xml:"Complemento"`
-}
-
-type Complemento struct {
-	Pagos20 Pagos20 `xml:"Pagos"`
-}
-
-type Pagos20 struct {
-	Totales Totales `xml:"Totales"`
-	Pago    Pago    `xml:"Pago"`
-}
-
-type Totales struct {
-	TotalTrasladosBaseIVA16     string `xml:"TotalTrasladosBaseIVA16,attr"`
-	TotalTrasladosImpuestoIVA16 string `xml:"TotalTrasladosImpuestoIVA16,attr"`
-	MontoTotalPagos             string `xml:"MontoTotalPagos,attr"`
-}
-
-type Pago struct {
-	XMLName          xml.Name           `xml:"Pago"`
-	FechaPago        string             `xml:"FechaPago,attr"`
-	Monto            string             `xml:"Monto,attr"`
-	FormaDePagoP     string             `xml:"FormaDePagoP,attr"`
-	MonedaP          string             `xml:"MonedaP,attr"`
-	TipoCambioP      string             `xml:"TipoCambioP,attr"`
-	NumOperacion     string             `xml:"NumOperacion,attr"`
-	DoctoRelacionado []DoctoRelacionado `xml:"DoctoRelacionado"`
-}
-
-type DoctoRelacionado struct {
-	IDDocumento      string      `xml:"IdDocumento,attr"`
-	Serie            string      `xml:"Serie,attr"`
-	Folio            string      `xml:"Folio,attr"`
-	ImpSaldoAnt      string      `xml:"ImpSaldoAnt,attr"`
-	ImpPagado        float64     `xml:"ImpPagado,attr"`
-	ImpSaldoInsoluto string      `xml:"ImpSaldoInsoluto,attr"`
-	ImpuestosDR      ImpuestosDR `xml:"ImpuestosDR"`
-}
-
-type ImpuestosDR struct {
-	TrasladosDR TrasladosDR `xml:"TrasladosDR"`
-}
-
-type TrasladosDR struct {
-	TrasladoDR TrasladoDR `xml:"TrasladoDR"`
-}
-
-type TrasladoDR struct {
-	BaseDR       string `xml:"BaseDR,attr"`
-	ImpuestoDR   string `xml:"ImpuestoDR,attr"`
-	TipoFactorDR string `xml:"TipoFactorDR,attr"`
-	TasaOCuotaDR string `xml:"TasaOCuotaDR,attr"`
-	ImporteDR    string `xml:"ImporteDR,attr"`
 }
