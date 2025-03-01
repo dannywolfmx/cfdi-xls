@@ -8,10 +8,10 @@ import (
 	"path"
 	"path/filepath"
 	"sort"
-	"strconv"
 	"time"
 
 	"github.com/dannywolfmx/cfdi-xls/complemento"
+	"github.com/dannywolfmx/cfdi-xls/table"
 )
 
 const DIR_NAME = "./cfdis"
@@ -91,73 +91,46 @@ func CFDIPrint(files []os.DirEntry) {
 	})
 
 	cfdisPUE := make([]complemento.CFDI, 0)
-	//cfdisPPD := make([]complemento.CFDI, 0)
+	cfdisPPD := make([]complemento.CFDI, 0)
 
 	for _, cfdi := range cfdis {
-		//		if cfdi.MetodoPago == "PUE" && cfdi.FormaPago != "01" && cfdi.FormaPago != "15" && cfdi.FormaPago != "30" && (cfdi.Receptor.UsoCFDI == "G01" || cfdi.Receptor.UsoCFDI == "G03") {
-		//			cfdisPUE = append(cfdisPUE, cfdi)
-		//		} else if cfdi.MetodoPago == "PPD" && (cfdi.Receptor.UsoCFDI == "G01" || cfdi.Receptor.UsoCFDI == "G03") {
-		//			cfdisPPD = append(cfdisPPD, cfdi)
-		//		}
+		if cfdi.MetodoPago == "PUE" && cfdi.FormaPago != "01" && cfdi.FormaPago != "15" && cfdi.FormaPago != "30" && (cfdi.Receptor.UsoCFDI == "G01" || cfdi.Receptor.UsoCFDI == "G03") {
+			cfdisPUE = append(cfdisPUE, cfdi)
+		} else if cfdi.MetodoPago == "PPD" && (cfdi.Receptor.UsoCFDI == "G01" || cfdi.Receptor.UsoCFDI == "G03") {
+			cfdisPPD = append(cfdisPPD, cfdi)
+		}
 
 		//Solo forma de pago 01
-		if cfdi.FormaPago == "01" && (cfdi.Receptor.UsoCFDI == "G01" || cfdi.Receptor.UsoCFDI == "G03") {
-			cfdisPUE = append(cfdisPUE, cfdi)
-		}
+		//if cfdi.FormaPago == "01" && (cfdi.Receptor.UsoCFDI == "G01" || cfdi.Receptor.UsoCFDI == "G03") {
+		//	cfdisPUE = append(cfdisPUE, cfdi)
+		//}
 
 	}
 
-	total := 0.0
-	subTotal := 0.0
-	formasDePago := make(map[string]int)
-	for _, cfdi := range cfdisPUE {
-		cfdi.Print()
-		f, err := strconv.ParseFloat(cfdi.Total, 64)
-		if err != nil {
-			log.Fatal(err)
-		}
+	//	total := 0.0
+	//	subTotal := 0.0
+	//	formasDePago := make(map[string]int)
 
-		if f == 0 {
-			continue
-		}
+	table.PrintTable(cfdis)
 
-		s, err := strconv.ParseFloat(cfdi.SubTotal, 64)
-
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		formasDePago[cfdi.FormaPago]++
-
-		if cfdi.TipoCambio != "" {
-			tipoCambio, err := strconv.ParseFloat(cfdi.TipoCambio, 64)
-			if err != nil {
-				log.Fatal(err)
-			}
-
-			if tipoCambio != 1 {
-				f = f * tipoCambio
-				s = s * tipoCambio
-			}
-		}
-
-		total += f
-		subTotal += s
-	}
-
-	fmt.Println("Total Subtotal: ", subTotal)
-	fmt.Println("Total: ", total)
-	fmt.Println("Total de facturas PUE: ", len(cfdisPUE))
-
-	//FormasDePago
-	fmt.Println("Formas de pago")
-	for k, v := range formasDePago {
-		fmt.Println(k, ":", v)
-	}
-
-	//count
-	fmt.Println("-------------------------------------------------")
-	fmt.Println(len(cfdisPUE))
+	//	fmt.Println("Total Subtotal: ", subTotal)
+	//	fmt.Println("Total: ", total)
+	//	fmt.Println("Total de facturas PUE: ", len(cfdisPUE))
+	//
+	//	//Formas de pago
+	//	for _, cfdi := range cfdisPUE {
+	//		formasDePago[cfdi.FormaPago]++
+	//	}
+	//
+	//	//FormasDePago
+	//	fmt.Println("Formas de pago")
+	//	for k, v := range formasDePago {
+	//		fmt.Println(k, ":", v)
+	//	}
+	//
+	//	//count
+	//	fmt.Println("-------------------------------------------------")
+	//	fmt.Println(len(cfdisPUE))
 
 }
 
