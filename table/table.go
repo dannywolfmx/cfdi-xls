@@ -57,8 +57,9 @@ var (
 )
 
 var listFilters = map[string]cfdiFilterOption{
-	filterPUE.ID:                     filterPUE,
-	filterPPD.ID:                     filterPPD,
+	filterPUE.ID: filterPUE,
+	filterPPD.ID: filterPPD,
+
 	filterFormaPagoEfectivo.ID:       filterFormaPagoEfectivo,
 	filterFormaPagoCheque.ID:         filterFormaPagoCheque,
 	filterFormaPagoTransferencia.ID:  filterFormaPagoTransferencia,
@@ -79,6 +80,11 @@ var listFilters = map[string]cfdiFilterOption{
 	filterTipoPago.ID:     filterTipoPago,
 
 	filterIgnoreFilter.ID: filterIgnoreFilter,
+}
+
+var listFilterMetodoDePago = []string{
+	filterPUE.ID,
+	filterPPD.ID,
 }
 
 var listFilterFormaPago = []string{
@@ -134,6 +140,20 @@ var orderedMapKeys = []string{
 	filterIgnoreFilter.ID,
 }
 
+var filterTabsTitles = []string{
+	"Metodo de pago",      //PUE, PPD
+	"Forma de pago",       //Efectivo, Transferencia, Tarjeta de credito, etc
+	"Uso CFDI",            //G01, G02, G03
+	"Tipo de comprobante", //I, E, T, P
+}
+
+var filterTabsContent = [][]string{
+	listFilterMetodoDePago,
+	listFilterFormaPago,
+	listFilterUsoCFDI,
+	listFilterTipoComprobante,
+}
+
 var activeFilters = map[string]cfdiFilterOption{}
 
 var baseStyle = lipgloss.NewStyle().
@@ -168,8 +188,10 @@ func PrintTable(cfdi []complemento.CFDI) {
 		textarea:   textArea,
 		cfdis:      cfdi,
 		focusState: focusTable,
-		filter:     filterListView(),
+		filter:     filterListView(0),
 		resumen:    calcularResumen(cfdi),
+		Tabs:       filterTabsTitles,
+		activeTab:  0,
 	}
 
 	if _, err := tea.NewProgram(m).Run(); err != nil {
@@ -234,6 +256,8 @@ type model struct {
 	cfdis      []complemento.CFDI
 	cur        int
 	resumen    resumen
+	Tabs       []string
+	activeTab  int
 }
 
 // Init
@@ -290,17 +314,17 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.focusState == focusFilter {
 				selectedIndex := m.filter.Index()
 
-				selectedFilter := listFilters[orderedMapKeys[selectedIndex]]
-				if _, ok := activeFilters[selectedFilter.ID]; ok {
-					delete(activeFilters, selectedFilter.ID)
+				selectedFilter := filterTabsContent[m.activeTab][selectedIndex]
+				if _, ok := activeFilters[selectedFilter]; ok {
+					delete(activeFilters, selectedFilter)
 				} else {
-					activeFilters[selectedFilter.ID] = selectedFilter
+					activeFilters[selectedFilter] = listFilters[selectedFilter]
 				}
 
 				m.cfdis = filterCFDIS(originalCFDIS)
 				m.table = generateCFDITable(m.table.Columns(), transformCFDIToRow(m.cfdis))
 
-				m.filter = filterListView()
+				m.filter = filterListView(m.activeTab)
 				m.filter.Select(selectedIndex)
 				//Update resumen
 				m.resumen = calcularResumen(m.cfdis)
@@ -313,7 +337,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.textarea = rowView(m.cfdis[m.cur])
 				}
 			}
-
 		case "down", "j":
 			if m.focusState == focusTable {
 				if m.cur < len(m.cfdis)-1 && m.table.Focused() {
@@ -321,6 +344,27 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.textarea = rowView(m.cfdis[m.cur])
 				}
 
+			}
+		case "left", "h":
+			if m.focusState == focusFilter {
+				//Move tab to the left
+				if m.activeTab > 0 {
+					m.activeTab--
+					m.filter = filterListView(m.activeTab)
+					m.filter.Select(0)
+					m.cur = 0
+				}
+			}
+
+		case "right", "l":
+			if m.focusState == focusFilter {
+				//Move tab to the right
+				if m.activeTab < len(m.Tabs)-1 {
+					m.activeTab++
+					m.filter = filterListView(m.activeTab)
+					m.filter.Select(0)
+					m.cur = 0
+				}
 			}
 		}
 	}
@@ -364,6 +408,60 @@ func calcularResumen(cfdis []complemento.CFDI) resumen {
 	return r
 }
 
+func tabBorderWithBottom(left, middle, right string) lipgloss.Border {
+	border := lipgloss.RoundedBorder()
+	border.BottomLeft = left
+	border.Bottom = middle
+	border.BottomRight = right
+	return border
+}
+
+var (
+	inactiveTabBorder = tabBorderWithBottom("┴", "─", "┴")
+	activeTabBorder   = tabBorderWithBottom("┘", " ", "└")
+	highlightColor    = lipgloss.AdaptiveColor{Light: "#874BFD", Dark: "#7D56F4"}
+	inactiveTabStyle  = lipgloss.NewStyle().Border(inactiveTabBorder, true).BorderForeground(highlightColor).Padding(0, 1)
+	activeTabStyle    = inactiveTabStyle.Border(activeTabBorder, true)
+)
+
+func (m model) ViewFilter(lists list.Model) string {
+	//Create tabs for the filters
+	doc := strings.Builder{}
+	var renderTabs []string
+
+	for i, tab := range m.Tabs {
+		var style lipgloss.Style
+		isFirst, isLast, isActive := i == 0, i == len(m.Tabs)-1, i == m.activeTab
+		if isActive {
+			style = activeTabStyle
+		} else {
+			style = inactiveTabStyle
+		}
+
+		border, _, _, _, _ := style.GetBorder()
+
+		if isFirst && isActive {
+			border.BottomLeft = "│"
+		} else if isFirst && !isActive {
+			border.BottomLeft = "├"
+		} else if isLast && isActive {
+			border.BottomRight = "│"
+		} else if isLast && !isActive {
+			border.BottomRight = "┤"
+		}
+
+		style = style.Border(border, true)
+		renderTabs = append(renderTabs, style.Render(tab))
+	}
+
+	row := lipgloss.JoinHorizontal(lipgloss.Top, renderTabs...)
+	doc.WriteString(row)
+	doc.WriteString("\n")
+	//The list of filters selected
+	doc.WriteString(lists.View())
+	return doc.String()
+}
+
 // View
 func (m model) View() string {
 	var s string
@@ -383,7 +481,9 @@ func (m model) View() string {
 			),
 			lipgloss.JoinVertical(
 				lipgloss.Top,
-				baseStyle.Render(m.filter.View()),
+				baseStyle.Render(
+					m.ViewFilter(m.filter),
+				),
 			),
 		)
 	} else {
@@ -403,7 +503,9 @@ func (m model) View() string {
 				baseStyle.
 					BorderStyle(lipgloss.NormalBorder()).
 					BorderForeground(lipgloss.Color("69")).
-					Render(m.filter.View()),
+					Render(
+						m.ViewFilter(m.filter),
+					),
 			),
 		)
 	}
@@ -553,10 +655,10 @@ func (i item) FilterValue() string {
 	return i.text
 }
 
-func filterListView() list.Model {
+func filterListView(activeTab int) list.Model {
 	items := []list.Item{}
 
-	for _, key := range orderedMapKeys {
+	for _, key := range filterTabsContent[activeTab] {
 		f := listFilters[key]
 		if _, ok := activeFilters[key]; ok {
 			items = append(items, item{text: fmt.Sprintf(" (•) %s - %s", f.ID, f.Text)})
